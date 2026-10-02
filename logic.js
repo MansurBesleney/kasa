@@ -159,3 +159,27 @@ export function reportDoc(pages, title, ym) {
     ]),
   };
 }
+
+const isStr = v => typeof v === 'string';
+const isEntry = e => e && isStr(e.id) && (e.type === 'income' || e.type === 'expense')
+  && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && isStr(e.desc) && Number.isInteger(e.amount) && e.amount > 0;
+
+// Returns the state if it has the expected shape, otherwise null.
+export function validateBackup(obj) {
+  const s = obj && obj.settings;
+  const ok = obj && obj.version === 1 && s && isStr(s.title) && /^\d{4}-\d{2}$/.test(s.startMonth)
+    && Number.isInteger(s.openingBalance) && (s.lastBackup === undefined || isStr(s.lastBackup))
+    && Array.isArray(obj.entries) && obj.entries.every(isEntry);
+  return ok ? obj : null;
+}
+
+function daysBetween(a, b) {
+  const utc = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((utc(b) - utc(a)) / 86400000);
+}
+
+export function needsBackupReminder(state, today) {
+  if (!state.entries.length) return false;
+  const since = state.settings.lastBackup || state.entries.reduce((m, e) => (e.date < m ? e.date : m), today);
+  return daysBetween(since, today) > 30;
+}

@@ -171,3 +171,28 @@ test('reportDoc: one header per page and page breaks between pages', () => {
   const descCell = doc.content[1].columns[0].table.body[3][1];
   assert.equal(descCell.noWrap, true);
 });
+
+test('validateBackup accepts a real state and rejects broken ones', () => {
+  const good = september();
+  assert.notEqual(L.validateBackup(JSON.parse(JSON.stringify(good))), null);
+  const broken = [
+    null, {}, [], 'x',
+    { ...good, version: 2 },
+    { ...good, entries: 'x' },
+    { ...good, settings: { ...good.settings, openingBalance: '12' } },
+    { ...good, settings: { ...good.settings, lastBackup: 5 } },
+    { ...good, entries: [{ ...good.entries[0], amount: 12.5 }] },
+    { ...good, entries: [{ ...good.entries[0], type: 'other' }] },
+    { ...good, entries: [{ ...good.entries[0], date: '03.09.2026' }] },
+  ];
+  for (const b of broken) assert.equal(L.validateBackup(b), null, JSON.stringify(b)?.slice(0, 80));
+});
+
+test('needsBackupReminder after 30 days without a backup', () => {
+  const state = makeState([entry('expense', '2026-09-01', 1)]);
+  assert.equal(L.needsBackupReminder(state, '2026-10-01'), false);
+  assert.equal(L.needsBackupReminder(state, '2026-10-02'), true);
+  state.settings.lastBackup = '2026-10-01';
+  assert.equal(L.needsBackupReminder(state, '2026-10-20'), false);
+  assert.equal(L.needsBackupReminder(makeState([]), '2027-01-01'), false);
+});
