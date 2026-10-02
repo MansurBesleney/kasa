@@ -52,3 +52,33 @@ export function isAllowedDate(iso, startMonth, today) {
 export function normalizeDesc(text) {
   return String(text).trim().replace(/\s+/g, ' ').toLocaleUpperCase('tr-TR').slice(0, DESC_MAX);
 }
+
+export function entriesOf(state, ym) {
+  return state.entries
+    .filter(e => monthOf(e.date) === ym)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+}
+
+const total = (list, type) => list.reduce((s, e) => s + (e.type === type ? e.amount : 0), 0);
+
+// DEVİR is derived from everything before the month, so editing an old entry fixes every later month.
+export function monthSummary(state, ym) {
+  const before = state.entries.filter(e => e.date < `${ym}-01`);
+  const list = entriesOf(state, ym);
+  const devir = state.settings.openingBalance + total(before, 'income') - total(before, 'expense');
+  const tahsilat = total(list, 'income');
+  const harcama = total(list, 'expense');
+  return { devir, tahsilat, toplam: devir + tahsilat, harcama, kalan: devir + tahsilat - harcama };
+}
+
+// Earlier descriptions of the same type containing `typed`, most used first.
+export function suggestions(entries, type, typed, limit = 5) {
+  const q = normalizeDesc(typed);
+  const counts = new Map();
+  for (const e of entries) if (e.type === type) counts.set(e.desc, (counts.get(e.desc) || 0) + 1);
+  return [...counts]
+    .filter(([d]) => d.includes(q) && d !== q)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))
+    .slice(0, limit)
+    .map(([d]) => d);
+}

@@ -49,3 +49,52 @@ test('normalizeDesc uppercases in Turkish, trims and caps length', () => {
   assert.equal(L.normalizeDesc('  içme   suyu '), 'İÇME SUYU');
   assert.equal(L.normalizeDesc('x'.repeat(60)).length, L.DESC_MAX);
 });
+
+let seq = 0;
+const entry = (type, date, amount, desc = 'X') => ({ id: `e${String(seq++).padStart(4, '0')}`, type, date, desc, amount });
+const makeState = (entries, openingBalance = 0, startMonth = '2026-09') =>
+  ({ version: 1, settings: { title: 'T', startMonth, openingBalance }, entries });
+
+// September 2026 sheet, expense amounts in TL (after the fixes made to the xlsx)
+const SEP_EXPENSES = [2200, 510, 1400, 500, 1000, 155, 280, 1120, 401, 364, 72, 760, 245, 940, 399, 325,
+  360, 380, 719, 883, 325, 1090, 108, 870, 840, 108, 325, 5129, 172, 450, 660, 1132, 200, 1600, 800, 700,
+  1150, 2840, 320, 120, 120, 1490, 845, 120, 700, 815];
+const september = () => makeState([
+  entry('income', '2026-09-03', 3000000),
+  entry('income', '2026-09-19', 2140000),
+  ...SEP_EXPENSES.map(tl => entry('expense', '2026-09-15', tl * 100)),
+], 242900);
+
+test('September regression: totals match the corrected sheet', () => {
+  const s = L.monthSummary(september(), '2026-09');
+  assert.deepEqual(s, { devir: 242900, tahsilat: 5140000, toplam: 5382900, harcama: 3604200, kalan: 1778700 });
+});
+
+test('devir carries over and follows edits to past months', () => {
+  const state = september();
+  assert.equal(L.monthSummary(state, '2026-10').devir, 1778700);
+  assert.equal(L.monthSummary(state, '2026-11').devir, 1778700);
+  state.entries.push(entry('expense', '2026-09-30', 100000));
+  assert.equal(L.monthSummary(state, '2026-10').devir, 1678700);
+  state.entries.push(entry('expense', '2026-10-05', 1800000));
+  assert.equal(L.monthSummary(state, '2026-10').kalan, -121300);
+});
+
+test('entriesOf returns only that month, sorted by date', () => {
+  const state = makeState([entry('expense', '2026-10-05', 1), entry('expense', '2026-09-30', 1),
+    entry('income', '2026-10-01', 1)]);
+  assert.deepEqual(L.entriesOf(state, '2026-10').map(e => e.date), ['2026-10-01', '2026-10-05']);
+});
+
+test('suggestions: same type, matching text, most used first, no exact match', () => {
+  const es = [
+    entry('expense', '2026-09-01', 1, 'İÇME SUYU'), entry('expense', '2026-09-02', 1, 'İÇME SUYU'),
+    entry('expense', '2026-09-03', 1, 'BENZİN'), entry('expense', '2026-09-04', 1, 'ŞANTİYE İÇME SUYU'),
+    entry('income', '2026-09-05', 1, 'HURDA SATIŞ'),
+  ];
+  assert.deepEqual(L.suggestions(es, 'expense', ''), ['İÇME SUYU', 'BENZİN', 'ŞANTİYE İÇME SUYU']);
+  assert.deepEqual(L.suggestions(es, 'expense', 'içme'), ['İÇME SUYU', 'ŞANTİYE İÇME SUYU']);
+  assert.deepEqual(L.suggestions(es, 'expense', 'içme suyu'), ['ŞANTİYE İÇME SUYU']);
+  assert.deepEqual(L.suggestions(es, 'income', ''), ['HURDA SATIŞ']);
+  assert.equal(L.suggestions(Array.from({ length: 9 }, (_, i) => entry('expense', '2026-09-01', 1, `D${i}`)), 'expense', '').length, 5);
+});
