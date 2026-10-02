@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f5f8b">
+  <title>Kasa</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/pdfmake.min.js" defer></script>
+  <script src="vendor/vfs_fonts.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <section id="setup" hidden>
+    <h1>Kasa · İlk kurulum</h1>
+    <form id="setup-form" novalidate>
+      <label>Rapor başlığı
+        <input name="title" maxlength="80" autocomplete="off" placeholder="ÖRN. ŞİRKET GÜNLÜK KASA FİŞİ">
+      </label>
+      <label>Başlangıç ayı
+        <input name="startMonth" type="month">
+      </label>
+      <label>Ay başındaki kasa (TL)
+        <input name="opening" inputmode="decimal" autocomplete="off" placeholder="17787,00">
+      </label>
+      <p class="error" id="setup-error" role="alert"></p>
+      <button class="big primary">Başla</button>
+    </form>
+    <button type="button" class="link" data-action="restore">Yedekten yükle</button>
+  </section>
+
+  <section id="main" hidden>
+    <header class="month-bar">
+      <button type="button" id="prev-month" data-action="prev-month" aria-label="Önceki ay">‹</button>
+      <h1 id="month-label"></h1>
+      <button type="button" id="next-month" data-action="next-month" aria-label="Sonraki ay">›</button>
+    </header>
+    <p class="reminder" id="reminder" hidden>
+      30 günden uzun süredir yedek alınmadı.
+      <button type="button" class="link" data-action="backup">Şimdi yedek al</button>
+    </p>
+    <dl class="totals">
+      <div><dt>Devir</dt><dd id="t-devir"></dd></div>
+      <div><dt>Tahsilat</dt><dd id="t-tahsilat"></dd></div>
+      <div><dt>Harcama</dt><dd id="t-harcama"></dd></div>
+      <div class="kalan"><dt>Kalan</dt><dd id="t-kalan"></dd></div>
+    </dl>
+    <div class="add-buttons">
+      <button type="button" class="big expense" data-action="add-expense">+ Harcama</button>
+      <button type="button" class="big income" data-action="add-income">+ Tahsilat</button>
+    </div>
+    <ul id="entries"></ul>
+    <p id="empty" class="muted">Bu ay için kayıt yok.</p>
+    <button type="button" id="report" class="big primary" data-action="report">Rapor oluştur</button>
+    <details class="menu">
+      <summary>Diğer işlemler</summary>
+      <button type="button" data-action="backup">Yedek al</button>
+      <button type="button" data-action="restore">Yedekten yükle</button>
+      <button type="button" data-action="settings">Rapor başlığını değiştir</button>
+    </details>
+  </section>
+
+  <section id="entry" hidden>
+    <h1 id="entry-title"></h1>
+    <form id="entry-form" novalidate>
+      <fieldset>
+        <legend>Tarih</legend>
+        <div class="chips">
+          <button type="button" class="chip" data-days="0">Bugün</button>
+          <button type="button" class="chip" data-days="-1">Dün</button>
+          <button type="button" class="chip" data-days="-2">2 gün önce</button>
+        </div>
+        <label>Başka tarih <input name="date" type="date"></label>
+      </fieldset>
+      <label>Açıklama
+        <input name="desc" maxlength="40" autocomplete="off" autocapitalize="characters">
+      </label>
+      <div id="suggestions" class="chips"></div>
+      <label>Tutar (TL)
+        <input name="amount" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </label>
+      <p class="error" id="entry-error" role="alert"></p>
+      <button class="big primary">Kaydet</button>
+      <div class="row">
+        <button type="button" class="link" data-action="cancel">Vazgeç</button>
+        <button type="button" id="delete-entry" class="link danger" data-action="delete-entry" hidden>Sil</button>
+      </div>
+    </form>
+  </section>
+
+  <input type="file" id="restore-file" hidden>
+</body>
+</html>
