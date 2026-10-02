@@ -33,6 +33,8 @@ function span(text) {
 
 // ---- main screen ----
 
+const reportLabel = () => `${L.monthLabel(viewMonth)} raporu oluştur`;
+
 function renderMain() {
   const today = L.todayISO();
   const s = L.monthSummary(state, viewMonth);
@@ -41,6 +43,7 @@ function renderMain() {
   $('next-month').disabled = viewMonth >= L.monthOf(today);
   for (const k of ['devir', 'tahsilat', 'harcama', 'kalan']) $(`t-${k}`).textContent = L.formatAmount(s[k]);
   $('t-kalan').classList.toggle('negative', s.kalan < 0);
+  $('report').textContent = reportLabel();
   $('reminder').hidden = !L.needsBackupReminder(state, today);
 
   const items = L.entriesOf(state, viewMonth).reverse().map(e => {
@@ -125,7 +128,7 @@ function deleteEntry() {
 $('setup-form').addEventListener('submit', ev => {
   ev.preventDefault();
   const f = ev.target.elements;
-  const title = f.title.value.trim().toLocaleUpperCase('tr-TR');
+  const title = f.title.value.trim().toLocaleUpperCase('tr-TR').slice(0, 80);
   const startMonth = f.startMonth.value;
   const opening = L.parseAmount(f.opening.value, true);
   const error =
@@ -178,18 +181,26 @@ async function createReport() {
     alert(`Rapor oluşturulamadı: ${err.message}`);
   } finally {
     button.disabled = false;
-    button.textContent = 'Rapor oluştur';
+    button.textContent = reportLabel();
   }
 }
 
+let sharing = false;
+
 async function backup() {
-  const today = L.todayISO();
-  // .txt, because Chrome's share sheet refuses .json files
-  const blob = new Blob([JSON.stringify(state)], { type: 'text/plain' });
-  if (await shareFile(blob, `kasa-yedek-${today}.txt`)) {
-    state.settings.lastBackup = today;
-    save();
-    renderMain();
+  if (sharing) return;
+  sharing = true;
+  try {
+    const today = L.todayISO();
+    // .txt, because Chrome's share sheet refuses .json files
+    const blob = new Blob([JSON.stringify(state)], { type: 'text/plain' });
+    if (await shareFile(blob, `kasa-yedek-${today}.txt`)) {
+      state.settings.lastBackup = today;
+      save();
+      renderMain();
+    }
+  } finally {
+    sharing = false;
   }
 }
 
@@ -203,7 +214,11 @@ $('restore-file').addEventListener('change', async ev => {
     alert('Bu dosya bir kasa yedeği değil. Hiçbir şey değişmedi.');
     return;
   }
-  if (!confirm(`Yedekte ${data.entries.length} kayıt var. Telefondaki bilgiler bu yedekle değiştirilecek. Devam edilsin mi?`)) return;
+  const newest = data.entries.reduce((m, e) => (e.date > m ? e.date : m), '');
+  const last = newest ? L.formatDate(newest) : 'yok';
+  const now = state ? state.entries.length : 0;
+  if (!confirm(`Telefonda ${now} kayıt var. Yedekte ${data.entries.length} kayıt var (son kayıt: ${last}). Telefondaki bilgiler silinip yedektekiler yüklenecek. Devam edilsin mi?`)) return;
+  try { if (state) localStorage.setItem('kasa-onceki', JSON.stringify(state)); } catch { /* parking is best-effort */ }
   state = data;
   save();
   viewMonth = clampMonth(currentMonth());
@@ -213,7 +228,7 @@ $('restore-file').addEventListener('change', async ev => {
 function editTitle() {
   const title = prompt('Rapor başlığı', state.settings.title);
   if (title === null || !title.trim()) return;
-  state.settings.title = title.trim().toLocaleUpperCase('tr-TR');
+  state.settings.title = title.trim().toLocaleUpperCase('tr-TR').slice(0, 80);
   save();
 }
 
@@ -264,7 +279,7 @@ function start() {
     try { state = L.validateBackup(JSON.parse(raw)); } catch { state = null; }
     if (!state) {
       // Never silently lose data: park the unreadable copy under another key.
-      localStorage.setItem(`${KEY}-bozuk-${Date.now()}`, raw);
+      try { localStorage.setItem(`${KEY}-bozuk-${Date.now()}`, raw); } catch { /* quota: still show the message */ }
       $('setup-error').textContent = 'Kayıtlı bilgiler okunamadı. "Yedekten yükle" ile son yedeğinizi yükleyin.';
     }
   }
@@ -276,6 +291,14 @@ function start() {
     show('setup');
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  try {
+    const s = L.validateBackup(JSON.parse(localStorage.getItem(KEY)));
+    if (s) { state = s; if (!$('main').hidden) renderMain(); }
+  } catch { /* keep in-memory state */ }
+});
 
 navigator.storage?.persist?.();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
