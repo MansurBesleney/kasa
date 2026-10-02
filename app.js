@@ -143,6 +143,80 @@ $('setup-form').addEventListener('submit', ev => {
   renderMain();
 });
 
+// ---- report, backup, restore ----
+
+// Opens Android's share sheet; falls back to a download where file sharing isn't available.
+// Returns false only when the person closed the share sheet without sharing.
+async function shareFile(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return true;
+    } catch (err) {
+      if (err.name === 'AbortError') return false;
+      // NotAllowedError (the tap "expired" while the file was built): fall through to download
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  return true;
+}
+
+async function createReport() {
+  const button = $('report');
+  button.disabled = true;
+  button.textContent = 'Hazırlanıyor…';
+  try {
+    const doc = L.reportDoc(L.layoutReport(state, viewMonth), state.settings.title, viewMonth);
+    const blob = await pdfMake.createPdf(doc).getBlob();
+    await shareFile(blob, `KASA-${viewMonth}.pdf`);
+  } catch (err) {
+    alert(`Rapor oluşturulamadı: ${err.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Rapor oluştur';
+  }
+}
+
+async function backup() {
+  const today = L.todayISO();
+  // .txt, because Chrome's share sheet refuses .json files
+  const blob = new Blob([JSON.stringify(state)], { type: 'text/plain' });
+  if (await shareFile(blob, `kasa-yedek-${today}.txt`)) {
+    state.settings.lastBackup = today;
+    save();
+    renderMain();
+  }
+}
+
+$('restore-file').addEventListener('change', async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = '';
+  if (!file) return;
+  let data = null;
+  try { data = L.validateBackup(JSON.parse(await file.text())); } catch { /* not JSON: handled below */ }
+  if (!data) {
+    alert('Bu dosya bir kasa yedeği değil. Hiçbir şey değişmedi.');
+    return;
+  }
+  if (!confirm(`Yedekte ${data.entries.length} kayıt var. Telefondaki bilgiler bu yedekle değiştirilecek. Devam edilsin mi?`)) return;
+  state = data;
+  save();
+  viewMonth = clampMonth(currentMonth());
+  renderMain();
+});
+
+function editTitle() {
+  const title = prompt('Rapor başlığı', state.settings.title);
+  if (title === null || !title.trim()) return;
+  state.settings.title = title.trim().toLocaleUpperCase('tr-TR');
+  save();
+}
+
 // ---- events ----
 
 const actions = {
@@ -152,6 +226,10 @@ const actions = {
   'add-income': () => openEntry('income'),
   'delete-entry': deleteEntry,
   cancel: renderMain,
+  report: createReport,
+  backup,
+  restore: () => $('restore-file').click(),
+  settings: editTitle,
 };
 
 document.addEventListener('click', ev => {
