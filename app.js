@@ -278,4 +278,5 @@ function start() {
 }
 
 navigator.storage?.persist?.();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 start();
