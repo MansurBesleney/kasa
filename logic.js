@@ -82,3 +82,80 @@ export function suggestions(entries, type, typed, limit = 5) {
     .slice(0, limit)
     .map(([d]) => d);
 }
+
+export const ROWS_PER_COLUMN = 32; // measured: 33 rows overflow an A4 landscape page (test/pdf.test.js)
+
+// Rows of the printed sheet, split into columns (left, right, next page left, ...).
+// A "unit" is a group of rows that must stay in one column.
+export function layoutReport(state, ym, rowsPerColumn = ROWS_PER_COLUMN) {
+  const list = entriesOf(state, ym);
+  const s = monthSummary(state, ym);
+  const row = e => ({ kind: 'entry', date: e.date, desc: e.desc, amount: e.amount });
+  const incomes = [
+    { kind: 'entry', date: `${ym}-01`, desc: `${monthName(shiftMonth(ym, -1))} AYINDAN DEVİR`, amount: s.devir },
+    ...list.filter(e => e.type === 'income').map(row),
+  ];
+  const expenses = list.filter(e => e.type === 'expense').map(row);
+
+  const units = [[{ kind: 'header', text: 'TAHSİLATLAR' }, incomes[0]], ...incomes.slice(1).map(r => [r])];
+  if (expenses.length) {
+    units.push([{ kind: 'header', text: 'HARCAMA' }, expenses[0]], ...expenses.slice(1).map(r => [r]));
+  }
+  units.push([
+    { kind: 'section', text: 'KASA DURUMU' },
+    ...[['DEVİR', s.devir], ['TAHSİLAT', s.tahsilat], ['TOPLAM', s.toplam],
+      ['HARCAMA', s.harcama], ['GENEL TOPLAM', s.kalan]]
+      .map(([label, amount]) => ({ kind: 'total', label, amount })),
+  ]);
+
+  const columns = [[]];
+  for (const unit of units) {
+    let col = columns[columns.length - 1];
+    if (col.length && col.length + unit.length > rowsPerColumn) columns.push(col = []);
+    col.push(...unit);
+  }
+  const pages = [];
+  for (let i = 0; i < columns.length; i += 2) pages.push({ left: columns[i], right: columns[i + 1] || [] });
+  return pages;
+}
+
+// pdfmake document definition for the pages from layoutReport.
+export function reportDoc(pages, title, ym) {
+  const bold = { bold: true };
+  const toRow = r => {
+    if (r.kind === 'header') {
+      return [{ text: 'TARİH', ...bold, alignment: 'center' }, { text: r.text, ...bold, alignment: 'center' },
+        { text: 'TUTAR', ...bold, alignment: 'right' }];
+    }
+    if (r.kind === 'section') return ['', { text: r.text, ...bold, alignment: 'center' }, ''];
+    if (r.kind === 'total') {
+      return ['', { text: r.label, ...bold, alignment: 'right' },
+        { text: formatAmount(r.amount), ...bold, alignment: 'right' }];
+    }
+    // noWrap keeps every row one line high, so ROWS_PER_COLUMN stays true
+    return [{ text: formatDate(r.date), alignment: 'center' }, { text: r.desc, noWrap: true },
+      { text: formatAmount(r.amount), alignment: 'right' }];
+  };
+  // pdfmake can't draw a table without rows
+  const table = rows => (rows.length ? { table: { widths: [58, '*', 72], body: rows.map(toRow) } } : { text: '' });
+  return {
+    pageSize: 'A4',
+    pageOrientation: 'landscape',
+    pageMargins: [30, 30, 30, 30],
+    defaultStyle: { fontSize: 9 },
+    content: pages.flatMap((p, i) => [
+      {
+        columns: [
+          { text: title, bold: true, fontSize: 13, alignment: 'center', width: '*' },
+          { text: formatDate(lastDayOfMonth(ym)), width: 70, alignment: 'right' },
+        ],
+        margin: [0, 0, 0, 10],
+      },
+      {
+        columns: [table(p.left), table(p.right)],
+        columnGap: 20,
+        ...(i < pages.length - 1 ? { pageBreak: 'after' } : {}),
+      },
+    ]),
+  };
+}

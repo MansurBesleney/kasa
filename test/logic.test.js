@@ -98,3 +98,76 @@ test('suggestions: same type, matching text, most used first, no exact match', (
   assert.deepEqual(L.suggestions(es, 'income', ''), ['HURDA SATIŞ']);
   assert.equal(L.suggestions(Array.from({ length: 9 }, (_, i) => entry('expense', '2026-09-01', 1, `D${i}`)), 'expense', '').length, 5);
 });
+
+const kinds = col => col.map(r => r.kind).join(',');
+
+test('layout: small month fits in one column with all sections', () => {
+  const state = makeState([entry('income', '2026-10-02', 500), entry('expense', '2026-10-03', 100, 'A')], 1000, '2026-10');
+  const pages = L.layoutReport(state, '2026-10');
+  assert.equal(pages.length, 1);
+  assert.equal(kinds(pages[0].left), 'header,entry,entry,header,entry,section,total,total,total,total,total');
+  assert.deepEqual(pages[0].right, []);
+  assert.equal(pages[0].left[1].desc, 'EYLÜL AYINDAN DEVİR');
+  assert.equal(pages[0].left[1].amount, 1000);
+  assert.equal(pages[0].left.at(-1).label, 'GENEL TOPLAM');
+  assert.equal(pages[0].left.at(-1).amount, 1400);
+});
+
+test('layout: month without income or expenses still has devir row and summary', () => {
+  const pages = L.layoutReport(makeState([], 5000, '2026-10'), '2026-10');
+  assert.equal(kinds(pages[0].left), 'header,entry,section,total,total,total,total,total');
+});
+
+test('layout: January devir row names December', () => {
+  const pages = L.layoutReport(makeState([], 0, '2027-01'), '2027-01');
+  assert.equal(pages[0].left[1].desc, 'ARALIK AYINDAN DEVİR');
+});
+
+test('layout: September (46 expenses) fits on one page', () => {
+  const [page, ...rest] = L.layoutReport(september(), '2026-09');
+  assert.equal(rest.length, 0);
+  assert.equal(page.left.length, L.ROWS_PER_COLUMN);
+  assert.ok(page.right.length <= L.ROWS_PER_COLUMN);
+  const all = [...page.left, ...page.right];
+  assert.equal(all.filter(r => r.kind === 'entry').length, 1 + 2 + 46);
+  assert.equal(all.at(-1).amount, 1778700);
+});
+
+test('layout: many entries overflow to more pages, nothing lost, columns never too long', () => {
+  const state = makeState(Array.from({ length: 120 }, (_, i) => entry('expense', '2026-10-01', i + 1)), 0, '2026-10');
+  const pages = L.layoutReport(state, '2026-10');
+  assert.equal(pages.length, 3);
+  const cols = pages.flatMap(p => [p.left, p.right]).filter(c => c.length);
+  for (const c of cols) assert.ok(c.length <= L.ROWS_PER_COLUMN);
+  assert.equal(cols.flat().filter(r => r.kind === 'entry').length, 121);
+});
+
+test('layout: summary block is never split across columns', () => {
+  // header+devir, HARCAMA header + 22 expenses = 25 rows; the 6-row summary moves to the right column
+  const state = makeState(Array.from({ length: 22 }, () => entry('expense', '2026-10-01', 1)), 0, '2026-10');
+  const [page] = L.layoutReport(state, '2026-10', 28);
+  assert.equal(page.left.length, 25);
+  assert.equal(kinds(page.right), 'section,total,total,total,total,total');
+});
+
+test('layout: section header is never alone at the bottom of a column', () => {
+  // header+devir + 25 incomes = 27 rows; HARCAMA header and first expense move together
+  const state = makeState([
+    ...Array.from({ length: 25 }, () => entry('income', '2026-10-01', 1)),
+    entry('expense', '2026-10-02', 1),
+  ], 0, '2026-10');
+  const [page] = L.layoutReport(state, '2026-10', 28);
+  assert.equal(page.left.at(-1).kind, 'entry');
+  assert.equal(kinds(page.right.slice(0, 2)), 'header,entry');
+});
+
+test('reportDoc: one header per page and page breaks between pages', () => {
+  const state = makeState(Array.from({ length: 120 }, (_, i) => entry('expense', '2026-10-01', i + 1)), 0, '2026-10');
+  const doc = L.reportDoc(L.layoutReport(state, '2026-10'), 'BAŞLIK', '2026-10');
+  assert.equal(doc.pageOrientation, 'landscape');
+  assert.equal(doc.content.length, 6);
+  assert.equal(doc.content[0].columns[1].text, '31.10.2026');
+  assert.equal(doc.content.filter(c => c.pageBreak === 'after').length, 2);
+  const descCell = doc.content[1].columns[0].table.body[3][1];
+  assert.equal(descCell.noWrap, true);
+});
