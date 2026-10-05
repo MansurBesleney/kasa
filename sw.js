@@ -1,5 +1,5 @@
 // Bump VERSION on every deploy, otherwise installed phones keep the old files.
-const VERSION = 'kasa-v1';
+const VERSION = 'kasa-v2';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'logic.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'vendor/pdfmake.min.js', 'vendor/vfs_fonts.js'];
 
 self.addEventListener('install', event => {

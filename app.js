@@ -232,6 +232,21 @@ function editTitle() {
   save();
 }
 
+// Every month's DEVİR is derived from this, so fixing it fixes all reports.
+function editOpening() {
+  const label = `${L.monthLabel(state.settings.startMonth)} başındaki kasa (TL)`;
+  const text = prompt(label, L.formatAmount(state.settings.openingBalance).replaceAll('.', ''));
+  if (text === null) return;
+  const opening = L.parseAmount(text, true);
+  if (opening === null) {
+    alert('Tutarı kontrol edin. Örnek: 17787 veya 17787,50 (binlik nokta koymayın).');
+    return;
+  }
+  state.settings.openingBalance = opening;
+  save();
+  renderMain();
+}
+
 // ---- events ----
 
 const actions = {
@@ -245,6 +260,7 @@ const actions = {
   backup,
   restore: () => $('restore-file').click(),
   settings: editTitle,
+  opening: editOpening,
 };
 
 document.addEventListener('click', ev => {
